@@ -1,0 +1,88 @@
+@font-face {
+  font-family: "Bricolage Grotesque";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("/assets/fonts/BricolageGrotesque.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("/assets/fonts/PlusJakartaSans.woff2") format("woff2");
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0.98 0.004 145;
+    --foreground: 0.18 0.02 145;
+    --card: 1 0 0;
+    --card-foreground: 0.18 0.02 145;
+    --popover: 1 0 0;
+    --popover-foreground: 0.18 0.02 145;
+    --primary: 0.52 0.17 145;
+    --primary-foreground: 1 0 0;
+    --secondary: 0.94 0.025 145;
+    --secondary-foreground: 0.25 0.06 145;
+    --muted: 0.94 0.012 145;
+    --muted-foreground: 0.5 0.04 145;
+    --accent: 0.91 0.04 145;
+    --accent-foreground: 0.25 0.06 145;
+    --destructive: 0.55 0.22 27;
+    --destructive-foreground: 1 0 0;
+    --border: 0.88 0.02 145;
+    --input: 0.88 0.02 145;
+    --ring: 0.52 0.17 145;
+    --radius: 0.625rem;
+    --chart-1: 0.52 0.17 145;
+    --chart-2: 0.65 0.14 145;
+    --chart-3: 0.75 0.1 145;
+    --chart-4: 0.85 0.06 145;
+    --chart-5: 0.45 0.2 145;
+    --sidebar: 0.25 0.06 145;
+    --sidebar-foreground: 0.95 0.012 145;
+    --sidebar-primary: 0.52 0.17 145;
+    --sidebar-primary-foreground: 1 0 0;
+    --sidebar-accent: 0.35 0.08 145;
+    --sidebar-accent-foreground: 0.95 0.012 145;
+    --sidebar-border: 0.35 0.06 145;
+    --sidebar-ring: 0.52 0.17 145;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-body;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-display;
+  }
+}
+
+@layer utilities {
+  .pharmacy-gradient {
+    background: linear-gradient(
+      135deg,
+      oklch(0.52 0.17 145),
+      oklch(0.42 0.2 165)
+    );
+  }
+  .stat-card {
+    @apply rounded-xl border bg-card p-6 shadow-sm transition-all hover:shadow-md;
+  }
+}
