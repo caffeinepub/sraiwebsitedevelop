@@ -2,7 +2,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Camera, Loader2 } from "lucide-react";
 import { motion } from "motion/react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useActor } from "../hooks/useActor";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import { useSaveUserProfile, useUserProfile } from "../hooks/useQueries";
 
@@ -26,20 +27,40 @@ function getGreeting() {
 export function LoginScreen({ onLoginComplete }: LoginScreenProps) {
   const { login, isLoggingIn, isLoginSuccess, identity } =
     useInternetIdentity();
+  const { isFetching: actorFetching } = useActor();
   const [shopName, setShopName] = useState("");
   const [shopId, setShopId] = useState("");
   const [shopAddress, setShopAddress] = useState("");
   const [shopPhone, setShopPhone] = useState("");
   const [shopGst, setShopGst] = useState("");
   const [nameError, setNameError] = useState("");
-  const [step, setStep] = useState<"auth" | "setup">("auth");
+  const [step, setStep] = useState<"auth" | "setup" | "waiting">("auth");
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const saveProfile = useSaveUserProfile();
-  const { data: profile } = useUserProfile();
+  const { data: profile, isLoading: profileLoading } = useUserProfile();
 
-  const handleLogin = async () => {
-    await login();
+  // When identity is set (from stored session OR fresh login), check profile
+  useEffect(() => {
+    if (!identity) return;
+
+    // Still loading actor or profile -- show waiting
+    if (actorFetching || profileLoading) {
+      setStep("waiting");
+      return;
+    }
+
+    // Profile loaded
+    if (profile) {
+      onLoginComplete(profile.name);
+    } else {
+      // No profile yet -- show setup form
+      setStep("setup");
+    }
+  }, [identity, actorFetching, profileLoading, profile, onLoginComplete]);
+
+  const handleLogin = () => {
+    login();
   };
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -80,13 +101,18 @@ export function LoginScreen({ onLoginComplete }: LoginScreenProps) {
     onLoginComplete(shopName.trim());
   };
 
-  if (isLoginSuccess && profile) {
-    onLoginComplete(profile.name);
-    return null;
-  }
-
-  if (isLoginSuccess && step === "auth") {
-    setStep("setup");
+  // Show waiting spinner when actor/profile loading after login
+  if (step === "waiting" || (!!identity && (actorFetching || profileLoading))) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-orange-400 animate-pulse" />
+          <p className="text-muted-foreground text-sm">
+            Aapki shop load ho rahi hai...
+          </p>
+        </div>
+      </div>
+    );
   }
 
   if (step === "setup") {
@@ -236,6 +262,7 @@ export function LoginScreen({ onLoginComplete }: LoginScreenProps) {
     );
   }
 
+  // Default: auth screen (login)
   return (
     <div
       className="min-h-screen flex items-center justify-center p-4"
@@ -290,8 +317,11 @@ export function LoginScreen({ onLoginComplete }: LoginScreenProps) {
             </div>
             <img
               src="/assets/generated/sr-mascot.dim_400x500.png"
-              alt="SR Mascot"
+              alt="SR"
               className="w-48 h-auto object-contain"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
             />
           </div>
           <div className="text-center py-3 px-6">
@@ -317,6 +347,11 @@ export function LoginScreen({ onLoginComplete }: LoginScreenProps) {
               {isLoggingIn && <Loader2 className="h-4 w-4 animate-spin" />}
               {isLoggingIn ? "Logging in..." : "Login / Register"}
             </button>
+            {isLoginSuccess && (
+              <p className="text-center text-xs text-emerald-600">
+                Login successful! Loading your shop...
+              </p>
+            )}
             <p className="text-center text-xs text-gray-400">
               Secure login — sirf aap apna data dekh sakte ho
             </p>

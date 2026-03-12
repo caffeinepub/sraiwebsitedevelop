@@ -1,16 +1,23 @@
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CheckCircle2, Loader2, MessageCircle } from "lucide-react";
+import { CheckCircle2, MessageCircle } from "lucide-react";
+import { motion } from "motion/react";
+import { useState } from "react";
 import { toast } from "sonner";
-import { OrderStatus } from "../backend";
-import { usePendingOrders, useUpdateOrderStatus } from "../hooks/useQueries";
+import type { Order } from "../backend";
+import { BillDetailModal, getExtOrder } from "../components/BillDetailModal";
+import {
+  OrderStatus,
+  usePendingOrders,
+  useUpdateOrderStatus,
+} from "../hooks/useQueries";
 
 function formatDate(dateStr: string) {
   try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("en-IN", {
+    return new Date(dateStr).toLocaleDateString("en-IN", {
       day: "2-digit",
-      month: "2-digit",
+      month: "short",
       year: "numeric",
     });
   } catch {
@@ -18,23 +25,46 @@ function formatDate(dateStr: string) {
   }
 }
 
+function formatBillNo(id: bigint): string {
+  return `BILL-${id.toString().padStart(3, "0")}`;
+}
+
 export function Pending() {
   const { data: orders, isLoading, isError } = usePendingOrders();
   const updateStatus = useUpdateOrderStatus();
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [billOpen, setBillOpen] = useState(false);
 
-  const handleDeliver = async (id: bigint) => {
+  const handleMarkDelivered = async (id: bigint) => {
     try {
       await updateStatus.mutateAsync({ id, status: OrderStatus.delivered });
-      toast.success("Order marked as delivered");
+      toast.success("Marked as delivered!");
     } catch {
-      toast.error("Failed to update order status");
+      toast.error("Failed to update status");
     }
   };
 
-  const handleWhatsApp = (mobile: string, name: string, total: number) => {
-    const message = `Hi ${name}, your bill total is ₹${total.toFixed(2)}`;
-    const url = `https://wa.me/${mobile}?text=${encodeURIComponent(message)}`;
-    window.open(url, "_blank");
+  const handleWhatsApp = (order: Order) => {
+    const ext = getExtOrder(order.id);
+    const num = order.customerMobile.replace(/\D/g, "");
+    const shopId = localStorage.getItem("userShopId") || "My Shop";
+    const discount = ext.discount ?? 0;
+    const grandTotal = order.grandTotal - discount;
+    const advance = ext.advance ?? 0;
+    const balance = ext.balance ?? grandTotal - advance;
+    const lines = [
+      `Namaskar ${order.customerName}!`,
+      "Aapka order pending hai.",
+      `Bill No: ${formatBillNo(order.id)}`,
+      `Shop: ${shopId}`,
+      `Grand Total: \u20b9${grandTotal.toFixed(2)}`,
+      `Balance: \u20b9${balance.toFixed(2)}`,
+      "Dhanyawad! \u2014 sraiwebsitedevelop",
+    ].join("\n");
+    window.open(
+      `https://wa.me/${num}?text=${encodeURIComponent(lines)}`,
+      "_blank",
+    );
   };
 
   return (
@@ -44,7 +74,7 @@ export function Pending() {
           Pending Orders
         </h2>
         <p className="text-muted-foreground text-sm mt-1">
-          {orders?.length ?? 0} orders awaiting delivery
+          {orders?.length ?? 0} orders pending delivery
         </p>
       </div>
 
@@ -60,84 +90,103 @@ export function Pending() {
       {isLoading ? (
         <div data-ocid="pending.loading_state" className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-24 w-full" />
+            <Skeleton key={i} className="h-24 w-full rounded-xl" />
           ))}
         </div>
       ) : !orders?.length ? (
-        <div data-ocid="pending.empty_state" className="py-16 text-center">
-          <CheckCircle2 size={48} className="mx-auto text-emerald-500 mb-3" />
-          <p className="text-muted-foreground">
-            All orders delivered! No pending orders.
-          </p>
+        <div
+          data-ocid="pending.empty_state"
+          className="text-center py-16 rounded-xl border border-dashed text-muted-foreground"
+        >
+          <CheckCircle2 size={40} className="mx-auto mb-3 opacity-30" />
+          <p className="font-medium">All caught up!</p>
+          <p className="text-sm">No pending orders right now.</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {orders.map((order, idx) => (
-            <div
-              key={order.id.toString()}
-              data-ocid={`pending.item.${idx + 1}`}
-              className="bg-card border border-border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
-            >
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-foreground">
-                    {order.customerName}
-                  </span>
-                  <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                    {formatDate(order.date)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-4 mt-1">
-                  <span className="text-sm text-muted-foreground">
-                    📞 {order.customerMobile}
-                  </span>
-                  <span className="text-sm font-medium text-primary">
-                    ₹{order.grandTotal.toFixed(2)}
-                  </span>
-                </div>
-                {order.items.length > 0 && (
-                  <p className="text-xs text-muted-foreground mt-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {orders.map((order, i) => {
+            const ext = getExtOrder(order.id);
+            const discount = ext.discount ?? 0;
+            const grandTotal = order.grandTotal - discount;
+            return (
+              <motion.article
+                key={order.id.toString()}
+                data-ocid={`pending.item.${i + 1}`}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.07, duration: 0.35 }}
+                className="bg-card rounded-xl border border-border p-4 hover:border-primary/40 hover:shadow-md transition-all space-y-3"
+              >
+                <button
+                  type="button"
+                  className="w-full text-left space-y-3"
+                  onClick={() => {
+                    setSelectedOrder(order);
+                    setBillOpen(true);
+                  }}
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="font-semibold text-foreground">
+                        {order.customerName}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {order.customerMobile} • {formatBillNo(order.id)}
+                      </p>
+                    </div>
+                    <Badge className="bg-amber-100 text-amber-700 border-amber-200">
+                      pending
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
                     {order.items
-                      .map((it) => `${it.productName} ×${it.qty}`)
+                      .slice(0, 2)
+                      .map((it) => it.productName)
                       .join(", ")}
-                  </p>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  data-ocid={`pending.whatsapp.button.${idx + 1}`}
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    handleWhatsApp(
-                      order.customerMobile,
-                      order.customerName,
-                      order.grandTotal,
-                    )
-                  }
-                  className="text-green-600 border-green-200 hover:bg-green-50 hover:text-green-700"
-                >
-                  <MessageCircle size={14} className="mr-1" /> WhatsApp
-                </Button>
-                <Button
-                  data-ocid={`pending.deliver.button.${idx + 1}`}
-                  size="sm"
-                  onClick={() => handleDeliver(order.id)}
-                  disabled={updateStatus.isPending}
-                  className="pharmacy-gradient text-white border-0 hover:opacity-90"
-                >
-                  {updateStatus.isPending ? (
-                    <Loader2 size={14} className="mr-1 animate-spin" />
-                  ) : (
-                    <CheckCircle2 size={14} className="mr-1" />
-                  )}
-                  Mark Delivered
-                </Button>
-              </div>
-            </div>
-          ))}
+                    {order.items.length > 2 &&
+                      ` +${order.items.length - 2} more`}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-primary text-lg">
+                      ₹{grandTotal.toFixed(2)}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {formatDate(order.date)}
+                    </span>
+                  </div>
+                </button>
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    data-ocid={`pending.deliver_button.${i + 1}`}
+                    size="sm"
+                    className="flex-1 sr-gradient text-white border-0 text-xs"
+                    onClick={() => handleMarkDelivered(order.id)}
+                    disabled={updateStatus.isPending}
+                  >
+                    <CheckCircle2 size={12} className="mr-1" />
+                    Mark Delivered
+                  </Button>
+                  <Button
+                    data-ocid={`pending.whatsapp_button.${i + 1}`}
+                    size="sm"
+                    variant="outline"
+                    className="text-green-600 border-green-200 hover:bg-green-50 text-xs"
+                    onClick={() => handleWhatsApp(order)}
+                  >
+                    <MessageCircle size={12} />
+                  </Button>
+                </div>
+              </motion.article>
+            );
+          })}
         </div>
       )}
+
+      <BillDetailModal
+        order={selectedOrder}
+        open={billOpen}
+        onOpenChange={setBillOpen}
+      />
     </div>
   );
 }

@@ -1,3 +1,5 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -7,13 +9,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { CheckCircle2 } from "lucide-react";
+import { Printer, TruckIcon } from "lucide-react";
+import { useState } from "react";
+import type { Order } from "../backend";
+import { BillDetailModal, getExtOrder } from "../components/BillDetailModal";
 import { useDeliveredOrders } from "../hooks/useQueries";
 
-function formatDate(dateStr: string) {
+function formatDate(dateStr?: string) {
+  if (!dateStr) return "";
   try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("en-IN", {
+    return new Date(dateStr).toLocaleDateString("en-IN", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -23,8 +28,14 @@ function formatDate(dateStr: string) {
   }
 }
 
+function formatBillNo(id: bigint): string {
+  return `BILL-${id.toString().padStart(3, "0")}`;
+}
+
 export function Delivered() {
   const { data: orders, isLoading, isError } = useDeliveredOrders();
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [billOpen, setBillOpen] = useState(false);
 
   return (
     <div className="space-y-6">
@@ -33,7 +44,7 @@ export function Delivered() {
           Delivered Orders
         </h2>
         <p className="text-muted-foreground text-sm mt-1">
-          {orders?.length ?? 0} delivered orders
+          {orders?.length ?? 0} orders delivered
         </p>
       </div>
 
@@ -57,52 +68,99 @@ export function Delivered() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
+                <TableHead>Bill No</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>Mobile</TableHead>
                 <TableHead>Grand Total</TableHead>
-                <TableHead>Date</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Order Date</TableHead>
+                <TableHead>Delivered Date</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {!orders?.length ? (
                 <TableRow>
                   <TableCell
-                    colSpan={4}
+                    colSpan={8}
                     className="text-center py-12 text-muted-foreground"
                     data-ocid="delivered.empty_state"
                   >
                     <div className="flex flex-col items-center gap-2">
-                      <CheckCircle2
-                        size={32}
-                        className="text-muted-foreground/40"
-                      />
+                      <TruckIcon size={32} className="opacity-30" />
                       No delivered orders yet.
                     </div>
                   </TableCell>
                 </TableRow>
               ) : (
-                orders.map((order, idx) => (
-                  <TableRow
-                    key={order.id.toString()}
-                    data-ocid={`delivered.item.${idx + 1}`}
-                  >
-                    <TableCell className="font-medium">
-                      {order.customerName}
-                    </TableCell>
-                    <TableCell>{order.customerMobile}</TableCell>
-                    <TableCell className="font-medium text-emerald-600">
-                      ₹{order.grandTotal.toFixed(2)}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {formatDate(order.date)}
-                    </TableCell>
-                  </TableRow>
-                ))
+                orders.map((order, idx) => {
+                  const ext = getExtOrder(order.id);
+                  const discount = ext.discount ?? 0;
+                  const grandTotal = order.grandTotal - discount;
+                  return (
+                    <TableRow
+                      key={order.id.toString()}
+                      data-ocid={`delivered.item.${idx + 1}`}
+                      className="cursor-pointer hover:bg-muted/30"
+                      onClick={() => {
+                        setSelectedOrder(order);
+                        setBillOpen(true);
+                      }}
+                    >
+                      <TableCell className="font-medium text-primary">
+                        {formatBillNo(order.id)}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {order.customerName}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {order.customerMobile}
+                      </TableCell>
+                      <TableCell className="font-semibold">
+                        ₹{grandTotal.toFixed(2)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">
+                          delivered
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {formatDate(order.date)}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {ext.deliveredDate
+                          ? formatDate(ext.deliveredDate)
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          data-ocid={`delivered.print_button.${idx + 1}`}
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedOrder(order);
+                            setBillOpen(true);
+                          }}
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          <Printer size={14} />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
         </div>
       )}
+
+      <BillDetailModal
+        order={selectedOrder}
+        open={billOpen}
+        onOpenChange={setBillOpen}
+      />
     </div>
   );
 }

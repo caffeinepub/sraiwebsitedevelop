@@ -1,6 +1,11 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   Dialog,
   DialogContent,
   DialogFooter,
@@ -10,6 +15,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -20,6 +32,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Camera,
+  ChevronDown,
   Loader2,
   MinusCircle,
   Plus,
@@ -27,15 +41,26 @@ import {
   Printer,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Order, OrderItem } from "../backend";
-import { useAddOrder, useDeleteOrder, useOrders } from "../hooks/useQueries";
+import {
+  BillDetailModal,
+  getExtOrder,
+  saveExtOrder,
+} from "../components/BillDetailModal";
+import type { ExtendedOrderData } from "../components/BillDetailModal";
+import {
+  OrderStatus,
+  useAddOrder,
+  useDeleteOrder,
+  useOrders,
+  useUpdateOrderStatus,
+} from "../hooks/useQueries";
 
 function formatDate(dateStr: string) {
   try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("en-IN", {
+    return new Date(dateStr).toLocaleDateString("en-IN", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -45,191 +70,109 @@ function formatDate(dateStr: string) {
   }
 }
 
-type ItemRow = { id: number; productName: string; qty: string; price: string };
+function formatBillNo(id: bigint): string {
+  return `BILL-${id.toString().padStart(3, "0")}`;
+}
+
+type ItemRow = {
+  id: number;
+  productName: string;
+  qty: string;
+  price: string;
+  photo: string | null;
+};
 let itemCounter = 0;
 function newItem(): ItemRow {
-  return { id: ++itemCounter, productName: "", qty: "1", price: "" };
+  return {
+    id: ++itemCounter,
+    productName: "",
+    qty: "1",
+    price: "",
+    photo: null,
+  };
 }
 
-// ----- Print Bill Dialog -----
-interface PrintBillDialogProps {
-  order: Order;
-  billNumber: string;
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-}
-
-function PrintBillDialog({
-  order,
-  billNumber,
-  open,
-  onOpenChange,
-}: PrintBillDialogProps) {
-  const shopId = localStorage.getItem("userShopId") || "My Shop";
-  const shopAddress = localStorage.getItem("userShopAddress") || "";
-  const shopPhone = localStorage.getItem("userShopPhone") || "";
-  const shopGst = localStorage.getItem("userShopGst") || "";
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-ocid="bill.dialog" className="max-w-md">
-        <style>{`
-          @media print {
-            body > * { display: none !important; }
-            .print-bill-area { display: block !important; position: fixed; top: 0; left: 0; width: 100%; }
-            [data-radix-popper-content-wrapper] { display: block !important; }
-            [role="dialog"] { box-shadow: none !important; border: none !important; }
-          }
-        `}</style>
-        <div className="print-bill-area">
-          <DialogHeader className="mb-2">
-            <DialogTitle className="sr-only">Print Bill</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 p-2">
-            {/* Shop Header */}
-            <div className="text-center space-y-1 border-b border-dashed pb-4">
-              <img
-                src="/assets/generated/sr-logo.dim_300x300.png"
-                alt="SR Logo"
-                className="w-12 h-12 rounded-lg object-cover mx-auto"
-              />
-              <h2 className="text-xl font-bold font-display">{shopId}</h2>
-              <p className="text-xs text-muted-foreground">
-                SR.AIWEBSITEDEVELOPER
-              </p>
-              {shopPhone && (
-                <p className="text-xs text-muted-foreground">📞 {shopPhone}</p>
-              )}
-              {shopAddress && (
-                <p className="text-xs text-muted-foreground">
-                  📍 {shopAddress}
-                </p>
-              )}
-              {shopGst && (
-                <p className="text-xs text-muted-foreground font-medium">
-                  GST: {shopGst}
-                </p>
-              )}
-              <div className="mt-2 flex justify-between text-sm">
-                <span className="font-semibold">Bill No: {billNumber}</span>
-                <span className="text-muted-foreground">
-                  {formatDate(order.date)}
-                </span>
-              </div>
-            </div>
-
-            {/* Customer Details */}
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Customer:</span>
-                <span className="font-medium">{order.customerName}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Mobile:</span>
-                <span>{order.customerMobile}</span>
-              </div>
-            </div>
-
-            {/* Items Table */}
-            <div className="border border-border rounded overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/60">
-                  <tr>
-                    <th className="text-left px-2 py-1.5 font-medium">
-                      Product
-                    </th>
-                    <th className="text-center px-2 py-1.5 font-medium">Qty</th>
-                    <th className="text-right px-2 py-1.5 font-medium">
-                      Price
-                    </th>
-                    <th className="text-right px-2 py-1.5 font-medium">
-                      Total
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {order.items.map((item, i) => (
-                    // biome-ignore lint/suspicious/noArrayIndexKey: bill items have no stable key
-                    <tr key={i} className="border-t border-border">
-                      <td className="px-2 py-1.5">{item.productName}</td>
-                      <td className="text-center px-2 py-1.5">
-                        {item.qty.toString()}
-                      </td>
-                      <td className="text-right px-2 py-1.5">
-                        ₹{item.price.toFixed(2)}
-                      </td>
-                      <td className="text-right px-2 py-1.5">
-                        ₹{(Number(item.qty) * item.price).toFixed(2)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-border bg-muted/40">
-                    <td colSpan={3} className="px-2 py-2 font-bold text-right">
-                      Grand Total
-                    </td>
-                    <td className="px-2 py-2 font-bold text-right text-primary">
-                      ₹{order.grandTotal.toFixed(2)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-
-            <p className="text-center text-xs text-muted-foreground border-t border-dashed pt-3">
-              SR.AIWEBSITEDEVELOPER — Help to make your own bill site
-            </p>
-          </div>
-        </div>
-        <DialogFooter className="gap-2">
-          <Button
-            data-ocid="bill.cancel_button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-          >
-            Close
-          </Button>
-          <Button
-            data-ocid="bill.print_button"
-            className="pharmacy-gradient text-white border-0"
-            onClick={() => window.print()}
-          >
-            <Printer size={14} className="mr-1" /> Print
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ----- Main Orders Component -----
 export function Orders() {
   const { data: orders, isLoading, isError } = useOrders();
   const addOrder = useAddOrder();
   const deleteOrder = useDeleteOrder();
 
-  const [open, setOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [billOpen, setBillOpen] = useState(false);
+  const [lensOpen, setLensOpen] = useState(false);
+
+  // Form state
   const [customerName, setCustomerName] = useState("");
   const [customerMobile, setCustomerMobile] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
   const [items, setItems] = useState<ItemRow[]>([newItem()]);
-  const [printOrder, setPrintOrder] = useState<Order | null>(null);
-  const [printBillNumber, setPrintBillNumber] = useState("");
-  const [printOpen, setPrintOpen] = useState(false);
+  const [discount, setDiscount] = useState("");
+  const [advance, setAdvance] = useState("");
+  const [transactionType, setTransactionType] = useState("Cash");
+  const [orderDate, setOrderDate] = useState(
+    () => new Date().toISOString().split("T")[0],
+  );
+  const [sendWhatsApp, setSendWhatsApp] = useState("No");
+  // Lens power
+  const [rightSph, setRightSph] = useState("");
+  const [rightCyl, setRightCyl] = useState("");
+  const [rightAxis, setRightAxis] = useState("");
+  const [rightAdd, setRightAdd] = useState("");
+  const [rightNear, setRightNear] = useState("");
+  const [leftSph, setLeftSph] = useState("");
+  const [leftCyl, setLeftCyl] = useState("");
+  const [leftAxis, setLeftAxis] = useState("");
+  const [leftAdd, setLeftAdd] = useState("");
+  const [leftNear, setLeftNear] = useState("");
 
-  const grandTotal = items.reduce((sum, it) => {
-    const qty = Number.parseFloat(it.qty) || 0;
-    const price = Number.parseFloat(it.price) || 0;
-    return sum + qty * price;
-  }, 0);
+  const photoRefs = useRef<Record<number, HTMLInputElement | null>>({});
 
   const resetForm = () => {
     setCustomerName("");
     setCustomerMobile("");
+    setCustomerAddress("");
     setItems([newItem()]);
+    setDiscount("");
+    setAdvance("");
+    setTransactionType("Cash");
+    setOrderDate(new Date().toISOString().split("T")[0]);
+    setSendWhatsApp("No");
+    setRightSph("");
+    setRightCyl("");
+    setRightAxis("");
+    setRightAdd("");
+    setRightNear("");
+    setLeftSph("");
+    setLeftCyl("");
+    setLeftAxis("");
+    setLeftAdd("");
+    setLeftNear("");
+    setLensOpen(false);
   };
 
-  const handleAddOrder = async () => {
+  const total = items.reduce((sum, it) => {
+    const p = Number.parseFloat(it.price) || 0;
+    const q = Number.parseInt(it.qty) || 0;
+    return sum + p * q;
+  }, 0);
+  const discountVal = Number.parseFloat(discount) || 0;
+  const grandTotal = total - discountVal;
+  const advanceVal = Number.parseFloat(advance) || 0;
+  const balance = grandTotal - advanceVal;
+
+  const handleItemPhoto = (id: number, file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const b64 = e.target?.result as string;
+      setItems((prev) =>
+        prev.map((it) => (it.id === id ? { ...it, photo: b64 } : it)),
+      );
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmit = async () => {
     if (!customerName.trim()) {
       toast.error("Customer name is required");
       return;
@@ -238,46 +181,99 @@ export function Orders() {
       toast.error("Mobile number is required");
       return;
     }
-    if (items.some((it) => !it.productName.trim())) {
-      toast.error("All items must have a product name");
+    const orderItems: OrderItem[] = items
+      .filter((it) => it.productName.trim())
+      .map((it) => ({
+        productName: it.productName.trim(),
+        qty: BigInt(Number.parseInt(it.qty) || 1),
+        price: Number.parseFloat(it.price) || 0,
+      }));
+    if (!orderItems.length) {
+      toast.error("Add at least one product");
       return;
     }
-
-    const orderItems: OrderItem[] = items.map((it) => ({
-      productName: it.productName,
-      qty: BigInt(Math.round(Number.parseFloat(it.qty) || 1)),
-      price: Number.parseFloat(it.price) || 0,
-    }));
-
     try {
-      await addOrder.mutateAsync({
+      const id = await addOrder.mutateAsync({
         customerName: customerName.trim(),
         customerMobile: customerMobile.trim(),
         items: orderItems,
         grandTotal,
-        date: new Date().toISOString(),
+        date: new Date(orderDate).toISOString(),
       });
-      toast.success("Order added successfully");
-      setOpen(false);
+      // Save extended data
+      const ext: ExtendedOrderData = {
+        customerAddress: customerAddress.trim() || undefined,
+        discount: discountVal || undefined,
+        advance: advanceVal || undefined,
+        balance: balance || undefined,
+        transactionType,
+        orderDate,
+        sendWhatsApp: sendWhatsApp === "Yes",
+        rightSph: rightSph || undefined,
+        rightCyl: rightCyl || undefined,
+        rightAxis: rightAxis || undefined,
+        rightAdd: rightAdd || undefined,
+        rightNearVision: rightNear || undefined,
+        leftSph: leftSph || undefined,
+        leftCyl: leftCyl || undefined,
+        leftAxis: leftAxis || undefined,
+        leftAdd: leftAdd || undefined,
+        leftNearVision: leftNear || undefined,
+      };
+      saveExtOrder(id, ext);
+      // Save product photos
+      items.forEach((it, idx) => {
+        if (it.photo) {
+          localStorage.setItem(`orderItemPhoto_${id}_${idx}`, it.photo);
+        }
+      });
+      toast.success("Order created!");
+      if (sendWhatsApp === "Yes") {
+        const num = customerMobile.replace(/\D/g, "");
+        const shopId = localStorage.getItem("userShopId") || "My Shop";
+        const lines = [
+          `Namaskar ${customerName}!`,
+          "Aapka bill taiyar hai.",
+          "",
+          `Bill No: BILL-${id.toString().padStart(3, "0")}`,
+          `Shop: ${shopId}`,
+          "---",
+          "Products:",
+          ...orderItems.map(
+            (oi) =>
+              `${oi.productName} x${oi.qty} = ₹${(oi.price * Number(oi.qty)).toFixed(2)}`,
+          ),
+          "---",
+          `Total: ₹${total.toFixed(2)}`,
+          `Discount: ₹${discountVal.toFixed(2)}`,
+          `Grand Total: ₹${grandTotal.toFixed(2)}`,
+          `Advance: ₹${advanceVal.toFixed(2)}`,
+          `Balance: ₹${balance.toFixed(2)}`,
+          `Payment: ${transactionType}`,
+          "---",
+          "Dhanyawad! — sraiwebsitedevelop",
+        ].join("\n");
+        window.open(
+          `https://wa.me/${num}?text=${encodeURIComponent(lines)}`,
+          "_blank",
+        );
+      }
+      setAddOpen(false);
       resetForm();
     } catch {
-      toast.error("Failed to add order");
+      toast.error("Failed to create order");
     }
   };
 
   const handleDelete = async (id: bigint) => {
+    if (!confirm("Delete this order?")) return;
     try {
       await deleteOrder.mutateAsync(id);
+      localStorage.removeItem(`extOrder_${id}`);
       toast.success("Order deleted");
     } catch {
-      toast.error("Failed to delete order");
+      toast.error("Failed to delete");
     }
-  };
-
-  const handlePrint = (order: Order, idx: number) => {
-    setPrintOrder(order);
-    setPrintBillNumber(`BILL-${String(idx + 1).padStart(3, "0")}`);
-    setPrintOpen(true);
   };
 
   return (
@@ -285,152 +281,372 @@ export function Orders() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-display font-bold text-foreground">
-            All Orders
+            Orders
           </h2>
           <p className="text-muted-foreground text-sm mt-1">
             {orders?.length ?? 0} total orders
           </p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog
+          open={addOpen}
+          onOpenChange={(o) => {
+            setAddOpen(o);
+            if (!o) resetForm();
+          }}
+        >
           <DialogTrigger asChild>
             <Button
               data-ocid="orders.add_order.button"
-              className="pharmacy-gradient text-white border-0 hover:opacity-90"
+              className="sr-gradient text-white border-0 hover:opacity-90"
             >
-              <Plus size={16} className="mr-1" /> Add Order
+              <Plus size={16} className="mr-1" /> New Order
             </Button>
           </DialogTrigger>
           <DialogContent
             data-ocid="orders.dialog"
-            className="max-w-lg max-h-[90vh] overflow-y-auto"
+            className="max-w-2xl max-h-[90vh] overflow-y-auto"
           >
             <DialogHeader>
-              <DialogTitle>New Order</DialogTitle>
+              <DialogTitle>New Order Bill</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label>Customer Name</Label>
-                  <Input
-                    data-ocid="order.customer_name.input"
-                    placeholder="e.g. Amit Kumar"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                  />
+
+            <div className="space-y-5">
+              {/* Customer Info */}
+              <div>
+                <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-3">
+                  Customer Information
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label>Customer Name *</Label>
+                    <Input
+                      data-ocid="orders.customer_name.input"
+                      placeholder="e.g. Ramesh Kumar"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Mobile Number *</Label>
+                    <Input
+                      data-ocid="orders.customer_mobile.input"
+                      placeholder="e.g. 9876543210"
+                      value={customerMobile}
+                      onChange={(e) => setCustomerMobile(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <Label>Mobile Number</Label>
+                <div className="mt-3 space-y-1">
+                  <Label>Address</Label>
                   <Input
-                    data-ocid="order.mobile.input"
-                    placeholder="e.g. 9876543210"
-                    value={customerMobile}
-                    onChange={(e) => setCustomerMobile(e.target.value)}
+                    data-ocid="orders.customer_address.input"
+                    placeholder="e.g. 123, MG Road, Delhi"
+                    value={customerAddress}
+                    onChange={(e) => setCustomerAddress(e.target.value)}
                   />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Items</Label>
-                {items.map((item, idx) => (
-                  <div key={item.id} className="flex gap-2 items-center">
+
+              {/* Products */}
+              <div>
+                <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-3">
+                  Products
+                </h3>
+                <div className="space-y-3">
+                  {items.map((item, idx) => (
+                    <div
+                      key={item.id}
+                      data-ocid={`orders.product.item.${idx + 1}`}
+                      className="p-3 border border-border rounded-lg space-y-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        {/* Photo */}
+                        <button
+                          type="button"
+                          className="w-12 h-12 rounded-lg border border-dashed border-border flex items-center justify-center cursor-pointer shrink-0 overflow-hidden"
+                          onClick={() => photoRefs.current[item.id]?.click()}
+                        >
+                          {item.photo ? (
+                            <img
+                              src={item.photo}
+                              alt="product"
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Camera
+                              size={18}
+                              className="text-muted-foreground"
+                            />
+                          )}
+                        </button>
+                        <input
+                          ref={(el) => {
+                            photoRefs.current[item.id] = el;
+                          }}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) handleItemPhoto(item.id, f);
+                          }}
+                        />
+                        <Input
+                          placeholder="Product name"
+                          value={item.productName}
+                          onChange={(e) =>
+                            setItems((prev) =>
+                              prev.map((it) =>
+                                it.id === item.id
+                                  ? { ...it, productName: e.target.value }
+                                  : it,
+                              ),
+                            )
+                          }
+                          className="flex-1"
+                        />
+                        <Input
+                          type="number"
+                          placeholder="Qty"
+                          value={item.qty}
+                          onChange={(e) =>
+                            setItems((prev) =>
+                              prev.map((it) =>
+                                it.id === item.id
+                                  ? { ...it, qty: e.target.value }
+                                  : it,
+                              ),
+                            )
+                          }
+                          className="w-16"
+                          min="1"
+                        />
+                        <Input
+                          type="number"
+                          placeholder="Price"
+                          value={item.price}
+                          onChange={(e) =>
+                            setItems((prev) =>
+                              prev.map((it) =>
+                                it.id === item.id
+                                  ? { ...it, price: e.target.value }
+                                  : it,
+                              ),
+                            )
+                          }
+                          className="w-24"
+                          min="0"
+                        />
+                        {items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setItems((prev) =>
+                                prev.filter((it) => it.id !== item.id),
+                              )
+                            }
+                            className="text-destructive hover:text-destructive/70"
+                          >
+                            <MinusCircle size={18} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-ocid="orders.add_product.button"
+                    onClick={() => setItems((prev) => [...prev, newItem()])}
+                  >
+                    <PlusCircle size={14} className="mr-1" /> Add Product
+                  </Button>
+                </div>
+              </div>
+
+              {/* Payment Summary */}
+              <div>
+                <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-3">
+                  Payment Summary
+                </h3>
+                <div className="bg-muted/30 rounded-lg p-3 space-y-2 mb-3">
+                  <div className="flex justify-between text-sm">
+                    <span>Total</span>
+                    <span className="font-semibold">₹{total.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-emerald-600">
+                    <span>Discount</span>
+                    <span>- ₹{discountVal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold border-t border-border pt-2">
+                    <span>Grand Total</span>
+                    <span className="text-primary">
+                      ₹{grandTotal.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span>Balance</span>
+                    <span>₹{balance.toFixed(2)}</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label>Discount (₹)</Label>
                     <Input
-                      data-ocid={`order.item_name.input.${idx + 1}`}
-                      placeholder="Product name"
-                      value={item.productName}
-                      className="flex-1"
-                      onChange={(e) =>
-                        setItems(
-                          items.map((it) =>
-                            it.id === item.id
-                              ? { ...it, productName: e.target.value }
-                              : it,
-                          ),
-                        )
-                      }
-                    />
-                    <Input
-                      placeholder="Qty"
-                      type="number"
-                      min="1"
-                      value={item.qty}
-                      className="w-16"
-                      onChange={(e) =>
-                        setItems(
-                          items.map((it) =>
-                            it.id === item.id
-                              ? { ...it, qty: e.target.value }
-                              : it,
-                          ),
-                        )
-                      }
-                    />
-                    <Input
-                      placeholder="₹ Price"
+                      data-ocid="orders.discount.input"
                       type="number"
                       min="0"
-                      value={item.price}
-                      className="w-24"
-                      onChange={(e) =>
-                        setItems(
-                          items.map((it) =>
-                            it.id === item.id
-                              ? { ...it, price: e.target.value }
-                              : it,
-                          ),
-                        )
-                      }
+                      placeholder="0"
+                      value={discount}
+                      onChange={(e) => setDiscount(e.target.value)}
                     />
-                    {items.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setItems(items.filter((it) => it.id !== item.id))
-                        }
-                        className="text-destructive hover:text-destructive/80"
-                      >
-                        <MinusCircle size={18} />
-                      </button>
-                    )}
                   </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setItems([...items, newItem()])}
-                >
-                  <PlusCircle size={14} className="mr-1" /> Add Item
-                </Button>
+                  <div className="space-y-1">
+                    <Label>Advance (₹)</Label>
+                    <Input
+                      data-ocid="orders.advance.input"
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={advance}
+                      onChange={(e) => setAdvance(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div className="space-y-1">
+                    <Label>Transaction Type</Label>
+                    <Select
+                      value={transactionType}
+                      onValueChange={setTransactionType}
+                    >
+                      <SelectTrigger data-ocid="orders.transaction.select">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Cash">Cash</SelectItem>
+                        <SelectItem value="UPI">UPI</SelectItem>
+                        <SelectItem value="Card">Card</SelectItem>
+                        <SelectItem value="Online">Online</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Order Date</Label>
+                    <Input
+                      data-ocid="orders.date.input"
+                      type="date"
+                      value={orderDate}
+                      onChange={(e) => setOrderDate(e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center justify-between py-2 px-3 bg-accent rounded-lg">
-                <span className="text-sm font-medium">Grand Total</span>
-                <span className="text-lg font-display font-bold text-primary">
-                  ₹{grandTotal.toFixed(2)}
-                </span>
+
+              {/* Lens Power (collapsible) */}
+              <Collapsible open={lensOpen} onOpenChange={setLensOpen}>
+                <CollapsibleTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-ocid="orders.lens.toggle"
+                    className="w-full justify-between"
+                  >
+                    <span>Lens Power (Optional)</span>
+                    <ChevronDown
+                      size={16}
+                      className={`transition-transform ${
+                        lensOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-4 mt-3">
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Right Eye 👁️</h4>
+                    <div className="grid grid-cols-5 gap-2">
+                      {[
+                        { label: "SPH", val: rightSph, set: setRightSph },
+                        { label: "CYL", val: rightCyl, set: setRightCyl },
+                        { label: "AXIS", val: rightAxis, set: setRightAxis },
+                        { label: "ADD", val: rightAdd, set: setRightAdd },
+                        { label: "Near", val: rightNear, set: setRightNear },
+                      ].map(({ label, val, set }) => (
+                        <div key={label} className="space-y-1">
+                          <Label className="text-xs">{label}</Label>
+                          <Input
+                            placeholder={label}
+                            value={val}
+                            onChange={(e) => set(e.target.value)}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Left Eye 👁️</h4>
+                    <div className="grid grid-cols-5 gap-2">
+                      {[
+                        { label: "SPH", val: leftSph, set: setLeftSph },
+                        { label: "CYL", val: leftCyl, set: setLeftCyl },
+                        { label: "AXIS", val: leftAxis, set: setLeftAxis },
+                        { label: "ADD", val: leftAdd, set: setLeftAdd },
+                        { label: "Near", val: leftNear, set: setLeftNear },
+                      ].map(({ label, val, set }) => (
+                        <div key={label} className="space-y-1">
+                          <Label className="text-xs">{label}</Label>
+                          <Input
+                            placeholder={label}
+                            value={val}
+                            onChange={(e) => set(e.target.value)}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+
+              {/* WhatsApp */}
+              <div className="space-y-1">
+                <Label>Send Receipt via WhatsApp?</Label>
+                <Select value={sendWhatsApp} onValueChange={setSendWhatsApp}>
+                  <SelectTrigger data-ocid="orders.whatsapp.select">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="No">No</SelectItem>
+                    <SelectItem value="Yes">Yes</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-            <DialogFooter>
+
+            <DialogFooter className="mt-4">
               <Button
-                type="button"
                 variant="outline"
+                data-ocid="orders.cancel_button"
                 onClick={() => {
-                  setOpen(false);
+                  setAddOpen(false);
                   resetForm();
                 }}
-                data-ocid="orders.cancel_button"
               >
                 Cancel
               </Button>
               <Button
-                type="button"
-                onClick={handleAddOrder}
+                onClick={handleSubmit}
                 disabled={addOrder.isPending}
-                className="pharmacy-gradient text-white border-0"
                 data-ocid="orders.submit_button"
+                className="sr-gradient text-white border-0"
               >
-                {addOrder.isPending ? (
+                {addOrder.isPending && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : null}
-                {addOrder.isPending ? "Adding..." : "Add Order"}
+                )}
+                {addOrder.isPending ? "Creating..." : "Submit Order"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -454,7 +670,7 @@ export function Orders() {
         </div>
       ) : (
         <div className="rounded-xl border border-border overflow-hidden">
-          <Table data-ocid="orders.table">
+          <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
                 <TableHead>Bill No</TableHead>
@@ -463,7 +679,7 @@ export function Orders() {
                 <TableHead>Grand Total</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Date</TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -474,82 +690,98 @@ export function Orders() {
                     className="text-center py-12 text-muted-foreground"
                     data-ocid="orders.empty_state"
                   >
-                    No orders yet. Add your first order!
+                    No orders yet. Create your first order!
                   </TableCell>
                 </TableRow>
               ) : (
-                orders.map((order, idx) => (
-                  <TableRow
-                    key={order.id.toString()}
-                    data-ocid={`orders.item.${idx + 1}`}
-                  >
-                    <TableCell className="font-mono text-xs text-muted-foreground">{`BILL-${String(idx + 1).padStart(3, "0")}`}</TableCell>
-                    <TableCell className="font-medium">
-                      {order.customerName}
-                    </TableCell>
-                    <TableCell>{order.customerMobile}</TableCell>
-                    <TableCell className="font-medium text-primary">
-                      ₹{order.grandTotal.toFixed(2)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          order.status === "delivered" ? "default" : "secondary"
-                        }
-                        className={
-                          order.status === "delivered"
-                            ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
-                            : "bg-amber-100 text-amber-700 hover:bg-amber-100"
-                        }
-                      >
-                        {order.status === "delivered" ? "Delivered" : "Pending"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {formatDate(order.date)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          data-ocid={`orders.print_button.${idx + 1}`}
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handlePrint(order, idx)}
-                          className="text-primary hover:text-primary hover:bg-primary/10"
-                          title="Print Bill"
+                orders.map((order, idx) => {
+                  const ext = getExtOrder(order.id);
+                  const discount = ext.discount ?? 0;
+                  const grandTotal = order.grandTotal - discount;
+                  return (
+                    <TableRow
+                      key={order.id.toString()}
+                      data-ocid={`orders.item.${idx + 1}`}
+                      className="cursor-pointer hover:bg-muted/30"
+                      onClick={() => {
+                        setSelectedOrder(order);
+                        setBillOpen(true);
+                      }}
+                    >
+                      <TableCell className="font-medium text-primary">
+                        {formatBillNo(order.id)}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {order.customerName}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {order.customerMobile}
+                      </TableCell>
+                      <TableCell className="font-semibold">
+                        ₹{grandTotal.toFixed(2)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            order.status === "delivered"
+                              ? "default"
+                              : "secondary"
+                          }
+                          className={
+                            order.status === "delivered"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-amber-100 text-amber-700"
+                          }
                         >
-                          <Printer size={14} />
-                        </Button>
-                        <Button
-                          data-ocid={`orders.delete_button.${idx + 1}`}
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDelete(order.id)}
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        >
-                          <Trash2 size={14} />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                          {order.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {formatDate(order.date)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex gap-1 justify-end">
+                          <Button
+                            data-ocid={`orders.print_button.${idx + 1}`}
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedOrder(order);
+                              setBillOpen(true);
+                            }}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Printer size={14} />
+                          </Button>
+                          <Button
+                            data-ocid={`orders.delete_button.${idx + 1}`}
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(order.id);
+                            }}
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
         </div>
       )}
 
-      {printOrder && (
-        <PrintBillDialog
-          order={printOrder}
-          billNumber={printBillNumber}
-          open={printOpen}
-          onOpenChange={(v) => {
-            setPrintOpen(v);
-            if (!v) setPrintOrder(null);
-          }}
-        />
-      )}
+      <BillDetailModal
+        order={selectedOrder}
+        open={billOpen}
+        onOpenChange={setBillOpen}
+      />
     </div>
   );
 }

@@ -20,39 +20,41 @@
 
 @layer base {
   :root {
-    --background: 0.98 0.004 145;
-    --foreground: 0.18 0.02 145;
+    /* Orange-warm theme */
+    --background: 0.99 0.004 80;
+    --foreground: 0.18 0.02 50;
     --card: 1 0 0;
-    --card-foreground: 0.18 0.02 145;
+    --card-foreground: 0.18 0.02 50;
     --popover: 1 0 0;
-    --popover-foreground: 0.18 0.02 145;
-    --primary: 0.52 0.17 145;
+    --popover-foreground: 0.18 0.02 50;
+    /* Orange primary #f97316 ≈ oklch(0.702 0.193 47) */
+    --primary: 0.68 0.19 47;
     --primary-foreground: 1 0 0;
-    --secondary: 0.94 0.025 145;
-    --secondary-foreground: 0.25 0.06 145;
-    --muted: 0.94 0.012 145;
-    --muted-foreground: 0.5 0.04 145;
-    --accent: 0.91 0.04 145;
-    --accent-foreground: 0.25 0.06 145;
+    --secondary: 0.96 0.018 80;
+    --secondary-foreground: 0.28 0.05 50;
+    --muted: 0.95 0.012 80;
+    --muted-foreground: 0.5 0.04 60;
+    --accent: 0.96 0.04 60;
+    --accent-foreground: 0.28 0.05 50;
     --destructive: 0.55 0.22 27;
     --destructive-foreground: 1 0 0;
-    --border: 0.88 0.02 145;
-    --input: 0.88 0.02 145;
-    --ring: 0.52 0.17 145;
+    --border: 0.9 0.018 80;
+    --input: 0.9 0.018 80;
+    --ring: 0.68 0.19 47;
     --radius: 0.625rem;
-    --chart-1: 0.52 0.17 145;
-    --chart-2: 0.65 0.14 145;
-    --chart-3: 0.75 0.1 145;
-    --chart-4: 0.85 0.06 145;
-    --chart-5: 0.45 0.2 145;
-    --sidebar: 0.25 0.06 145;
-    --sidebar-foreground: 0.95 0.012 145;
-    --sidebar-primary: 0.52 0.17 145;
+    --chart-1: 0.68 0.19 47;
+    --chart-2: 0.62 0.16 160;
+    --chart-3: 0.55 0.18 250;
+    --chart-4: 0.78 0.14 80;
+    --chart-5: 0.65 0.22 20;
+    --sidebar: 0.2 0.04 50;
+    --sidebar-foreground: 0.96 0.012 80;
+    --sidebar-primary: 0.68 0.19 47;
     --sidebar-primary-foreground: 1 0 0;
-    --sidebar-accent: 0.35 0.08 145;
-    --sidebar-accent-foreground: 0.95 0.012 145;
-    --sidebar-border: 0.35 0.06 145;
-    --sidebar-ring: 0.52 0.17 145;
+    --sidebar-accent: 0.3 0.06 50;
+    --sidebar-accent-foreground: 0.96 0.012 80;
+    --sidebar-border: 0.3 0.04 50;
+    --sidebar-ring: 0.68 0.19 47;
   }
 }
 
@@ -75,14 +77,30 @@
 }
 
 @layer utilities {
+  .sr-gradient {
+    background: linear-gradient(
+      135deg,
+      oklch(0.68 0.19 47),
+      oklch(0.58 0.21 35)
+    );
+  }
   .pharmacy-gradient {
     background: linear-gradient(
       135deg,
-      oklch(0.52 0.17 145),
-      oklch(0.42 0.2 165)
+      oklch(0.68 0.19 47),
+      oklch(0.58 0.21 35)
     );
   }
   .stat-card {
-    @apply rounded-xl border bg-card p-6 shadow-sm transition-all hover:shadow-md;
+    @apply rounded-xl border bg-card p-5 shadow-sm transition-all hover:shadow-md;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
   }
 }

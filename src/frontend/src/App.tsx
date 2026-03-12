@@ -1,6 +1,5 @@
 import { Toaster } from "@/components/ui/sonner";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LoginScreen } from "./components/LoginScreen";
 import { Navbar } from "./components/Navbar";
 import type { Tab } from "./components/Navbar";
@@ -14,34 +13,54 @@ import { Pending } from "./pages/Pending";
 import { Prescription } from "./pages/Prescription";
 import { Products } from "./pages/Products";
 
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
-});
-
-function AppInner() {
+export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [userName, setUserName] = useState<string | null>(null);
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { identity, clear, isInitializing } = useInternetIdentity();
   const { data: profile, isLoading: profileLoading } = useUserProfile();
   const { data: isAdmin } = useIsAdmin();
 
+  // Start a 6-second timeout on mount -- if still loading, show login screen
+  useEffect(() => {
+    timerRef.current = setTimeout(() => {
+      setLoadingTimedOut(true);
+    }, 6000);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  // When loading completes, clear the timeout
+  useEffect(() => {
+    if (!isInitializing) {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    }
+  }, [isInitializing]);
+
   useEffect(() => {
     if (profile) {
       setUserName(profile.name);
+      // Clear the timeout since we are now loaded
+      if (timerRef.current) clearTimeout(timerRef.current);
     }
   }, [profile]);
 
   const handleLogout = () => {
     clear();
     setUserName(null);
-    queryClient.clear();
   };
 
-  if (isInitializing || (identity && profileLoading)) {
+  // Show spinner ONLY during the first few seconds of initializing
+  const showLoading =
+    !loadingTimedOut && (isInitializing || (!!identity && profileLoading));
+
+  if (showLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 rounded-lg pharmacy-gradient animate-pulse" />
+          <div className="w-12 h-12 rounded-xl bg-primary animate-pulse" />
           <p className="text-muted-foreground text-sm">Loading your shop...</p>
         </div>
       </div>
@@ -71,7 +90,7 @@ function AppInner() {
         {activeTab === "admin" && <AdminPanel />}
       </main>
       <footer className="py-4 text-center text-xs text-muted-foreground border-t border-border">
-        © {new Date().getFullYear()}. Built with ❤️ using{" "}
+        &copy; {new Date().getFullYear()}. Built with ❤️ using{" "}
         <a
           href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
           target="_blank"
@@ -83,13 +102,5 @@ function AppInner() {
       </footer>
       <Toaster richColors position="top-right" />
     </div>
-  );
-}
-
-export default function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <AppInner />
-    </QueryClientProvider>
   );
 }
