@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { MessageCircle, Printer, X } from "lucide-react";
+import { Download, MessageCircle, X } from "lucide-react";
 import type { Order } from "../backend";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 
@@ -111,37 +111,75 @@ export function BillDetailModal({
 
   const hasLens = ext.rightSph || ext.rightCyl || ext.leftSph || ext.leftCyl;
 
-  const whatsappMsg = () => {
-    const lines = [
-      `Namaskar ${order.customerName}!`,
-      "Aapka bill taiyar hai.",
-      "",
-      `Bill No: ${billNo}`,
-      `Shop: ${shopId}`,
-      "---",
-      "Products:",
-      ...order.items.map(
-        (it) =>
-          `${it.productName} x${it.qty} = ₹${(it.price * Number(it.qty)).toFixed(2)}`,
-      ),
-      "---",
-      `Total: ₹${total.toFixed(2)}`,
-      `Discount: ₹${discount.toFixed(2)}`,
-      `Grand Total: ₹${grandTotal.toFixed(2)}`,
-      `Advance: ₹${advance.toFixed(2)}`,
-      `Balance: ₹${balance.toFixed(2)}`,
-      ext.transactionType ? `Payment: ${ext.transactionType}` : "",
-      "---",
-      "Dhanyawad! — sraiwebsitedevelop",
-    ]
-      .filter((l) => l !== undefined)
-      .join("\n");
-    return encodeURIComponent(lines);
-  };
-
   const handleWhatsApp = () => {
+    const separator = "══════════════════════";
+    const lineSep = "──────────────────────";
+
+    const productLines = order.items.map(
+      (it) =>
+        `• ${it.productName}\n  Qty: ${it.qty} | Price: ₹${it.price.toFixed(2)} | Total: ₹${(it.price * Number(it.qty)).toFixed(2)}`,
+    );
+
+    const lensLines: string[] = [];
+    if (hasLens) {
+      lensLines.push("", "🔍 LENS POWER");
+      if (ext.rightSph || ext.rightCyl) {
+        lensLines.push(
+          `Right Eye: SPH: ${ext.rightSph || "—"} | CYL: ${ext.rightCyl || "—"} | AXIS: ${ext.rightAxis || "—"} | ADD: ${ext.rightAdd || "—"} | Near: ${ext.rightNearVision || "—"}`,
+        );
+      }
+      if (ext.leftSph || ext.leftCyl) {
+        lensLines.push(
+          `Left Eye:  SPH: ${ext.leftSph || "—"} | CYL: ${ext.leftCyl || "—"} | AXIS: ${ext.leftAxis || "—"} | ADD: ${ext.leftAdd || "—"} | Near: ${ext.leftNearVision || "—"}`,
+        );
+      }
+    }
+
+    const dateStr = ext.orderDate
+      ? formatDate(ext.orderDate)
+      : new Date().toLocaleDateString("en-IN");
+
+    const lines = [
+      `🏪 *${shopId}*`,
+      shopPhone ? `📞 ${shopPhone}` : "",
+      shopAddress ? `📍 ${shopAddress}` : "",
+      shopGst ? `GST: ${shopGst}` : "",
+      separator,
+      "",
+      `📋 *BILL: ${billNo}*`,
+      `📅 Date: ${dateStr}`,
+      "",
+      "👤 *CUSTOMER DETAILS*",
+      `Name: ${order.customerName}`,
+      `Mobile: ${order.customerMobile}`,
+      ext.customerAddress ? `Address: ${ext.customerAddress}` : "",
+      "",
+      "📦 *PRODUCTS*",
+      lineSep,
+      ...productLines,
+      lineSep,
+      "",
+      "💰 *PAYMENT SUMMARY*",
+      `SubTotal:        ₹${total.toFixed(2)}`,
+      discount > 0 ? `Discount:        -₹${discount.toFixed(2)}` : "",
+      `Grand Total:     ₹${grandTotal.toFixed(2)}`,
+      advance > 0 ? `Advance:         ₹${advance.toFixed(2)}` : "",
+      `Dues:            ₹${balance.toFixed(2)}`,
+      ext.transactionType ? `Payment:         ${ext.transactionType}` : "",
+      ...lensLines,
+      "",
+      separator,
+      `Thank you for shopping at *${shopId}*! 🙏`,
+      "— sraiwebsitedevelop",
+    ]
+      .filter((l) => l !== "")
+      .join("\n");
+
     const num = order.customerMobile.replace(/\D/g, "");
-    window.open(`https://wa.me/${num}?text=${whatsappMsg()}`, "_blank");
+    window.open(
+      `https://wa.me/${num}?text=${encodeURIComponent(lines)}`,
+      "_blank",
+    );
   };
 
   const handlePrint = () => window.print();
@@ -346,8 +384,11 @@ export function BillDetailModal({
 
           {/* Footer */}
           <div className="text-center pt-2 border-t border-dashed">
-            <p className="text-xs text-muted-foreground">
-              Thank you! — sraiwebsitedevelop
+            <p className="text-sm font-semibold">
+              Thank you for shopping at {shopId}!
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              — sraiwebsitedevelop
             </p>
           </div>
         </div>
@@ -355,13 +396,13 @@ export function BillDetailModal({
         {/* Action Buttons */}
         <div className="no-print flex gap-2 flex-wrap pt-2">
           <Button
-            data-ocid="bill.print_button"
+            data-ocid="bill.upload_button"
             variant="outline"
             size="sm"
             onClick={handlePrint}
             className="flex-1"
           >
-            <Printer size={14} className="mr-1" /> Print / PDF
+            <Download size={14} className="mr-1" /> Download PDF
           </Button>
           <Button
             data-ocid="bill.whatsapp_button"

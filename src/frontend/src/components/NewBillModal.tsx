@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Eye, ImagePlus, Package, Plus, Trash2, X } from "lucide-react";
+import { Camera, Eye, ImagePlus, Package, Plus, Trash2, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useState } from "react";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
@@ -417,39 +417,63 @@ export function NewBillModal({ open, onOpenChange, onBillCreated }: Props) {
 
                     <div className="flex gap-3">
                       {/* Photo upload */}
-                      <label
-                        data-ocid={`newbill.upload_button.${i + 1}`}
-                        className="w-16 h-16 rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors shrink-0"
-                      >
-                        {prod.photo ? (
-                          <img
-                            src={prod.photo}
-                            alt="Product"
-                            className="w-full h-full object-cover rounded-lg"
-                          />
-                        ) : (
-                          <>
-                            <ImagePlus
-                              size={16}
-                              className="text-muted-foreground"
+                      <div className="flex flex-col gap-1 shrink-0">
+                        <label
+                          data-ocid={`newbill.upload_button.${i + 1}`}
+                          className="w-16 h-16 rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors relative overflow-hidden"
+                        >
+                          {prod.photo ? (
+                            <img
+                              src={prod.photo}
+                              alt="Product"
+                              className="w-full h-full object-cover rounded-lg"
                             />
-                            <span className="text-[9px] text-muted-foreground mt-0.5">
-                              Photo
-                            </span>
-                          </>
-                        )}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) =>
-                            handlePhotoUpload(
-                              prod.id,
-                              e.target.files?.[0] ?? null,
-                            )
-                          }
-                        />
-                      </label>
+                          ) : (
+                            <>
+                              <ImagePlus
+                                size={16}
+                                className="text-muted-foreground"
+                              />
+                              <span className="text-[9px] text-muted-foreground mt-0.5">
+                                Gallery
+                              </span>
+                            </>
+                          )}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) =>
+                              handlePhotoUpload(
+                                prod.id,
+                                e.target.files?.[0] ?? null,
+                              )
+                            }
+                          />
+                        </label>
+                        <label
+                          data-ocid={`newbill.camera_button.${i + 1}`}
+                          className="w-16 h-7 rounded-lg border border-primary/40 bg-primary/5 flex flex-col items-center justify-center cursor-pointer hover:bg-primary/15 transition-colors gap-0.5"
+                          title="Take photo from camera"
+                        >
+                          <Camera size={13} className="text-primary" />
+                          <span className="text-[9px] text-primary">
+                            Camera
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="hidden"
+                            onChange={(e) =>
+                              handlePhotoUpload(
+                                prod.id,
+                                e.target.files?.[0] ?? null,
+                              )
+                            }
+                          />
+                        </label>
+                      </div>
 
                       <div className="flex-1 space-y-2">
                         <Input

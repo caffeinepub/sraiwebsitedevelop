@@ -1,7 +1,14 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CheckCircle2, ClipboardList, Plus, ReceiptText } from "lucide-react";
+import {
+  CheckCircle2,
+  ClipboardList,
+  Plus,
+  ReceiptText,
+  Search,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import type { Order } from "../backend";
@@ -38,6 +45,7 @@ export function Dashboard() {
     null,
   );
   const [receiptOpen, setReceiptOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const loadLocalBills = useCallback(() => {
     const key = `bills_${principalId}`;
@@ -57,7 +65,34 @@ export function Dashboard() {
     loadLocalBills();
   }, [loadLocalBills]);
 
-  const recentOrders = orders ? [...orders].slice(-5).reverse() : [];
+  const allOrders = orders ? [...orders].reverse() : [];
+  const recentOrders = allOrders.slice(0, 5);
+
+  const q = searchQuery.trim().toLowerCase();
+
+  // When searching, search ALL bills (not just recent 10)
+  const filteredLocalBills = q
+    ? [...localBills]
+        .reverse()
+        .filter(
+          (bill) =>
+            bill.customerName.toLowerCase().includes(q) ||
+            (bill.customerMobile ?? "").toLowerCase().includes(q) ||
+            (bill.billNo ?? "").toLowerCase().includes(q),
+        )
+    : [...localBills].reverse().slice(0, 10);
+
+  // When searching, search ALL orders
+  const filteredOrders = q
+    ? allOrders.filter(
+        (order) =>
+          order.customerName.toLowerCase().includes(q) ||
+          (order.customerMobile ?? "").toLowerCase().includes(q),
+      )
+    : recentOrders;
+
+  const noResults =
+    q && filteredLocalBills.length === 0 && filteredOrders.length === 0;
 
   const cards = [
     {
@@ -170,96 +205,66 @@ export function Dashboard() {
         })}
       </div>
 
-      {/* Local Bills (New Bill system) */}
-      {localBills.length > 0 && (
-        <div>
-          <h3 className="text-lg font-display font-semibold text-foreground mb-3">
-            My Bills
-          </h3>
-          <div className="space-y-2">
-            {[...localBills]
-              .reverse()
-              .slice(0, 10)
-              .map((bill, i) => (
-                <motion.button
-                  type="button"
-                  key={bill.id}
-                  data-ocid={`dashboard.bill.item.${i + 1}`}
-                  initial={{ opacity: 0, x: -16 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.06, duration: 0.3 }}
-                  onClick={() => {
-                    setSelectedLocalBill(bill);
-                    setReceiptOpen(true);
-                  }}
-                  className="w-full flex items-center justify-between p-4 bg-card rounded-xl border border-border hover:border-primary/40 hover:shadow-md transition-all text-left group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <ReceiptText size={18} className="text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-sm text-foreground">
-                        {bill.customerName}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {bill.billNo} • {formatDate(bill.date)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge
-                      className={`text-xs ${
-                        bill.dues <= 0
-                          ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                          : "bg-amber-100 text-amber-700 border-amber-200"
-                      }`}
-                    >
-                      {bill.dues <= 0 ? "Paid" : `Due ₹${bill.dues.toFixed(0)}`}
-                    </Badge>
-                    <span className="font-bold text-primary">
-                      ₹{bill.grandTotal.toFixed(2)}
-                    </span>
-                  </div>
-                </motion.button>
-              ))}
-          </div>
-        </div>
+      {/* Search Bar */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.3 }}
+        className="relative"
+      >
+        <Search
+          size={18}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+        />
+        <Input
+          data-ocid="dashboard.search_input"
+          type="text"
+          placeholder="Customer name ya mobile number se dhundhe..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10 rounded-xl border-border focus:border-primary/50 bg-card h-11 text-sm"
+        />
+      </motion.div>
+
+      {/* Search result count */}
+      {q && !noResults && (
+        <p className="text-xs text-muted-foreground -mt-4">
+          {filteredLocalBills.length + filteredOrders.length} result(s) found
+          for &ldquo;{searchQuery}&rdquo;
+        </p>
       )}
 
-      {/* Recent Orders from backend */}
-      <div>
-        <h3 className="text-lg font-display font-semibold text-foreground mb-3">
-          Recent Orders
-        </h3>
-        {ordersLoading ? (
-          <div className="space-y-2" data-ocid="dashboard.orders.loading_state">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-16 w-full rounded-xl" />
-            ))}
-          </div>
-        ) : recentOrders.length === 0 ? (
-          <div
-            data-ocid="dashboard.orders.empty_state"
-            className="text-center py-12 rounded-xl border border-dashed text-muted-foreground text-sm"
-          >
-            <ReceiptText size={32} className="mx-auto mb-2 opacity-30" />
-            No orders yet. Use &ldquo;Add New Bill&rdquo; above to create your
-            first bill!
-          </div>
-        ) : (
+      {/* No Results */}
+      {noResults && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          data-ocid="dashboard.search.empty_state"
+          className="text-center py-10 rounded-xl border border-dashed text-muted-foreground text-sm"
+        >
+          <Search size={32} className="mx-auto mb-2 opacity-30" />
+          &ldquo;{searchQuery}&rdquo; ka koi bill nahi mila
+        </motion.div>
+      )}
+
+      {/* Local Bills (New Bill system) */}
+      {filteredLocalBills.length > 0 && (
+        <div>
+          <h3 className="text-lg font-display font-semibold text-foreground mb-3">
+            {q ? `Bills (${filteredLocalBills.length})` : "My Bills"}
+          </h3>
           <div className="space-y-2">
-            {recentOrders.map((order, i) => (
+            {filteredLocalBills.map((bill, i) => (
               <motion.button
                 type="button"
-                key={order.id.toString()}
-                data-ocid={`dashboard.order.item.${i + 1}`}
+                key={bill.id}
+                data-ocid={`dashboard.bill.item.${i + 1}`}
                 initial={{ opacity: 0, x: -16 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.07, duration: 0.35 }}
+                transition={{ delay: i * 0.04, duration: 0.3 }}
                 onClick={() => {
-                  setSelectedOrder(order);
-                  setBillOpen(true);
+                  setSelectedLocalBill(bill);
+                  setReceiptOpen(true);
                 }}
                 className="w-full flex items-center justify-between p-4 bg-card rounded-xl border border-border hover:border-primary/40 hover:shadow-md transition-all text-left group"
               >
@@ -269,37 +274,120 @@ export function Dashboard() {
                   </div>
                   <div>
                     <p className="font-semibold text-sm text-foreground">
-                      {order.customerName}
+                      {bill.customerName}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {order.items.length} item
-                      {order.items.length !== 1 ? "s" : ""} •{" "}
-                      {formatDate(order.date)}
+                      {bill.customerMobile && `📞 ${bill.customerMobile} • `}
+                      {bill.billNo} • {formatDate(bill.date)}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <Badge
-                    variant={
-                      order.status === "delivered" ? "default" : "secondary"
-                    }
-                    className={
-                      order.status === "delivered"
+                    className={`text-xs ${
+                      bill.dues <= 0
                         ? "bg-emerald-100 text-emerald-700 border-emerald-200"
                         : "bg-amber-100 text-amber-700 border-amber-200"
-                    }
+                    }`}
                   >
-                    {order.status}
+                    {bill.dues <= 0 ? "Paid" : `Due ₹${bill.dues.toFixed(0)}`}
                   </Badge>
                   <span className="font-bold text-primary">
-                    ₹{order.grandTotal.toFixed(2)}
+                    ₹{bill.grandTotal.toFixed(2)}
                   </span>
                 </div>
               </motion.button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Recent / Filtered Orders from backend */}
+      {filteredOrders.length > 0 && (
+        <div>
+          <h3 className="text-lg font-display font-semibold text-foreground mb-3">
+            {q ? `Orders (${filteredOrders.length})` : "Recent Orders"}
+          </h3>
+          {ordersLoading ? (
+            <div
+              className="space-y-2"
+              data-ocid="dashboard.orders.loading_state"
+            >
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-16 w-full rounded-xl" />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredOrders.map((order, i) => (
+                <motion.button
+                  type="button"
+                  key={order.id.toString()}
+                  data-ocid={`dashboard.order.item.${i + 1}`}
+                  initial={{ opacity: 0, x: -16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05, duration: 0.35 }}
+                  onClick={() => {
+                    setSelectedOrder(order);
+                    setBillOpen(true);
+                  }}
+                  className="w-full flex items-center justify-between p-4 bg-card rounded-xl border border-border hover:border-primary/40 hover:shadow-md transition-all text-left group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <ReceiptText size={18} className="text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm text-foreground">
+                        {order.customerName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {order.customerMobile &&
+                          `📞 ${order.customerMobile} • `}
+                        {order.items.length} item
+                        {order.items.length !== 1 ? "s" : ""} •{" "}
+                        {formatDate(order.date)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge
+                      variant={
+                        order.status === "delivered" ? "default" : "secondary"
+                      }
+                      className={
+                        order.status === "delivered"
+                          ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                          : "bg-amber-100 text-amber-700 border-amber-200"
+                      }
+                    >
+                      {order.status}
+                    </Badge>
+                    <span className="font-bold text-primary">
+                      ₹{order.grandTotal.toFixed(2)}
+                    </span>
+                  </div>
+                </motion.button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Empty state when no search and no bills */}
+      {!q &&
+        !ordersLoading &&
+        recentOrders.length === 0 &&
+        localBills.length === 0 && (
+          <div
+            data-ocid="dashboard.orders.empty_state"
+            className="text-center py-12 rounded-xl border border-dashed text-muted-foreground text-sm"
+          >
+            <ReceiptText size={32} className="mx-auto mb-2 opacity-30" />
+            No orders yet. Use &ldquo;Add New Bill&rdquo; above to create your
+            first bill!
+          </div>
         )}
-      </div>
 
       <BillDetailModal
         order={selectedOrder}
