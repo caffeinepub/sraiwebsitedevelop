@@ -122,10 +122,13 @@ export function BillReceiptModal({ bill, open, onOpenChange }: Props) {
       .join("\n");
 
     const num = bill.customerMobile.replace(/\D/g, "");
-    window.open(
-      `https://wa.me/${num}?text=${encodeURIComponent(lines)}`,
-      "_blank",
-    );
+    const waUrl = `https://wa.me/${num}?text=${encodeURIComponent(lines)}`;
+    // On mobile, use location href for direct app open; on desktop, new tab
+    if (/Android|iPhone|iPad/i.test(navigator.userAgent)) {
+      window.location.href = waUrl;
+    } else {
+      window.open(waUrl, "_blank");
+    }
   };
 
   const photosWithProduct = bill.products.filter((p) => p.photo);
@@ -208,7 +211,7 @@ export function BillReceiptModal({ bill, open, onOpenChange }: Props) {
                 <img
                   src={shopLogo}
                   alt="Shop Logo"
-                  className="w-16 h-16 rounded-xl object-cover mx-auto border shadow-sm"
+                  className="w-32 h-auto max-h-28 object-contain mx-auto block"
                   onError={(e) => {
                     (e.target as HTMLImageElement).style.display = "none";
                   }}
